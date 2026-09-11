@@ -427,18 +427,24 @@ function renderMainCountdown(){
 function renderExamList(){
   const listEl = document.getElementById('examList');
   const summaryEl = document.getElementById('statSummary');
+
   if (!state.exams.length){
     listEl.innerHTML = '<div class="empty">No exams tracked yet. Use ADD EXAM or check DISCOVER.</div>';
     summaryEl.innerHTML = '';
     return;
   }
+
   const withMeta = state.exams.map(e => {
-    const daysLeft = Math.max(0, Math.ceil(daysBetween(e.event_date)));
-    return {...e, daysLeft, st: statusFor(daysLeft)};
-  }).sort((a,b) => a.daysLeft - b.daysLeft);
+    const unverified = e.date_status === 'unverified';
+    const daysLeft = unverified ? null : Math.max(0, Math.ceil(daysBetween(e.event_date)));
+    return {...e, daysLeft, unverified, st: unverified ? STATUS.SAFE : statusFor(daysLeft)};
+  }).sort((a,b) => (a.daysLeft ?? 999999) - (b.daysLeft ?? 999999));
 
   const counts = {critical:0, urgent:0, tracking:0, safe:0};
-  withMeta.forEach(e => counts[e.st.key]++);
+  withMeta.forEach(e => {
+    if (!e.unverified) counts[e.st.key]++;
+  });
+
   summaryEl.innerHTML = `
     <div class="stat-box" style="color:var(--critical);"><div class="n">${counts.critical}</div><div class="l">CRITICAL</div></div>
     <div class="stat-box" style="color:var(--urgent);"><div class="n">${counts.urgent}</div><div class="l">URGENT</div></div>
@@ -446,41 +452,53 @@ function renderExamList(){
   `;
 
   listEl.innerHTML = withMeta.map(e => {
+    if (e.unverified) {
+      return `
+        <div class="exam-card safe" data-id="${e.id}">
+          <div class="exam-card-top">
+            <div>
+              <div class="name">${e.name}</div>
+              <div class="event">${e.event}</div>
+            </div>
+            <span class="badge safe"><span class="bdot"></span>DATE TBA</span>
+          </div>
+          <div class="date">EVENT DATE: NOT OFFICIALLY VERIFIED</div>
+          <div class="exam-actions">
+            <button class="btn-mini" onclick="removeExam('${e.id}')">REMOVE</button>
+          </div>
+        </div>`;
+    }
+
     const secs = Math.max(0, (new Date(e.event_date+'T00:00:00') - new Date()) / 1000);
-    const h = Math.floor((secs % 86400) / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60);
-    const verified = e.last_checked ? `VERIFIED ${new Date(e.last_checked).toLocaleDateString('en-GB')}` : 'NOT YET VERIFIED';
+    const h = Math.floor((secs % 86400) / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = Math.floor(secs % 60);
+    const verified = e.last_checked
+      ? `SOURCE CHECKED ${new Date(e.last_checked).toLocaleDateString('en-GB')}`
+      : 'NOT YET CHECKED';
+
     return `
-    <div class="exam-card ${e.st.key}" data-id="${e.id}">
-      <div class="exam-card-top">
-        <div><div class="name">${e.name}</div><div class="event">${e.event}</div></div>
-        <span class="badge ${e.st.key}"><span class="bdot"></span>${e.st.key.toUpperCase()}</span>
-      </div>
-      <div class="countdown-row">
-        <div class="cd-unit"><div class="v" data-unit="d">${e.daysLeft}</div><div class="l">DAYS</div></div>
-        <div class="cd-unit"><div class="v" data-unit="h">${String(h).padStart(2,'0')}</div><div class="l">HRS</div></div>
-        <div class="cd-unit"><div class="v" data-unit="m">${String(m).padStart(2,'0')}</div><div class="l">MIN</div></div>
-        <div class="cd-unit"><div class="v" data-unit="s">${String(s).padStart(2,'0')}</div><div class="l">SEC</div></div>
-      </div>
-      <div class="date">EVENT DATE: ${e.event_date} · ${verified}</div>
-      <div class="exam-actions"><button class="btn-mini" onclick="removeExam('${e.id}')">REMOVE</button></div>
-    </div>`;
+      <div class="exam-card ${e.st.key}" data-id="${e.id}">
+        <div class="exam-card-top">
+          <div>
+            <div class="name">${e.name}</div>
+            <div class="event">${e.event}</div>
+          </div>
+          <span class="badge ${e.st.key}"><span class="bdot"></span>${e.st.key.toUpperCase()}</span>
+        </div>
+        <div class="countdown-row">
+          <div class="cd-unit"><div class="v" data-unit="d">${e.daysLeft}</div><div class="l">DAYS</div></div>
+          <div class="cd-unit"><div class="v" data-unit="h">${String(h).padStart(2,'0')}</div><div class="l">HRS</div></div>
+          <div class="cd-unit"><div class="v" data-unit="m">${String(m).padStart(2,'0')}</div><div class="l">MIN</div></div>
+          <div class="cd-unit"><div class="v" data-unit="s">${String(s).padStart(2,'0')}</div><div class="l">SEC</div></div>
+        </div>
+        <div class="date">EVENT DATE: ${e.event_date} · ${verified}</div>
+        <div class="exam-actions">
+          <button class="btn-mini" onclick="removeExam('${e.id}')">REMOVE</button>
+        </div>
+      </div>`;
   }).join('');
 }
-
-function tickCardCountdowns(){
-  document.querySelectorAll('.exam-card').forEach(card => {
-    const id = card.dataset.id;
-    const exam = state.exams.find(e => e.id === id);
-    if (!exam) return;
-    const secs = Math.max(0, (new Date(exam.event_date+'T00:00:00') - new Date()) / 1000);
-    const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600), m = Math.floor((secs % 3600) / 60), s = Math.floor(secs % 60);
-    card.querySelector('[data-unit="d"]').textContent = d;
-    card.querySelector('[data-unit="h"]').textContent = String(h).padStart(2,'0');
-    card.querySelector('[data-unit="m"]').textContent = String(m).padStart(2,'0');
-    card.querySelector('[data-unit="s"]').textContent = String(s).padStart(2,'0');
-  });
-}
-
 /* ---------- Discover ---------- */
 function renderDiscover(){
   const el = document.getElementById('discoverList');
