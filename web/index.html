@@ -399,8 +399,15 @@ function renderMainCountdown(){
 
   if (!withDays.length){
     document.getElementById('mainDays').textContent = '--';
+    document.getElementById('mainDays').style.color = 'var(--muted)';
     document.getElementById('mainExamName').textContent = 'DATE VERIFICATION PENDING';
     document.getElementById('mainExamEvent').textContent = 'No officially verified exam date';
+
+    const ring = document.getElementById('ringProgress');
+    const circumference = 2 * Math.PI * 45;
+    ring.style.stroke = 'var(--muted)';
+    ring.setAttribute('stroke-dasharray', circumference);
+    ring.setAttribute('stroke-dashoffset', circumference);
     return;
   }
 
@@ -499,6 +506,31 @@ function renderExamList(){
       </div>`;
   }).join('');
 }
+/* ---------- Live countdown tick ---------- */
+function tickCardCountdowns(){
+  document.querySelectorAll('.exam-card').forEach(card => {
+    const id = card.dataset.id;
+    const exam = state.exams.find(e => e.id === id);
+    if (!exam || exam.date_status === 'unverified') return;
+
+    const secs = Math.max(0, (new Date(exam.event_date+'T00:00:00') - new Date()) / 1000);
+    const d = Math.floor(secs / 86400);
+    const h = Math.floor((secs % 86400) / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = Math.floor(secs % 60);
+
+    const dEl = card.querySelector('[data-unit="d"]');
+    const hEl = card.querySelector('[data-unit="h"]');
+    const mEl = card.querySelector('[data-unit="m"]');
+    const sEl = card.querySelector('[data-unit="s"]');
+
+    if (dEl) dEl.textContent = d;
+    if (hEl) hEl.textContent = String(h).padStart(2,'0');
+    if (mEl) mEl.textContent = String(m).padStart(2,'0');
+    if (sEl) sEl.textContent = String(s).padStart(2,'0');
+  });
+}
+
 /* ---------- Discover ---------- */
 function renderDiscover(){
   const el = document.getElementById('discoverList');
@@ -539,13 +571,27 @@ function renderLog(){
 
 /* ---------- Daily brief ---------- */
 function renderDailyBrief(){
-  const withMeta = state.exams.map(e => ({...e, daysLeft: Math.max(0, Math.ceil(daysBetween(e.event_date)))}));
-  const critical = withMeta.filter(e => e.daysLeft <= 3).length;
-  const urgent = withMeta.filter(e => e.daysLeft > 3 && e.daysLeft <= 7).length;
-  const upcoming = withMeta.filter(e => e.daysLeft > 7).length;
+  const verified = state.exams
+    .filter(e => e.date_status !== 'unverified')
+    .map(e => ({...e, daysLeft: Math.max(0, Math.ceil(daysBetween(e.event_date)))}));
+
+  const unverifiedCount = state.exams.filter(e => e.date_status === 'unverified').length;
+  const critical = verified.filter(e => e.daysLeft <= 3).length;
+  const urgent = verified.filter(e => e.daysLeft > 3 && e.daysLeft <= 7).length;
+  const upcoming = verified.filter(e => e.daysLeft > 7).length;
   const todayStr = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}).toUpperCase();
-  const lines = withMeta.sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,3).map(e => `${e.name} — ${e.event} in ${e.daysLeft} day${e.daysLeft===1?'':'s'}`);
-  document.getElementById('dailyBrief').innerHTML = `${todayStr}<br>CRITICAL: ${critical} &nbsp; URGENT: ${urgent} &nbsp; UPCOMING: ${upcoming}<br><br>${lines.length ? lines.join('<br>') : 'No tracked events.'}`;
+
+  const lines = verified
+    .sort((a,b)=>a.daysLeft-b.daysLeft)
+    .slice(0,3)
+    .map(e => `${e.name} — ${e.event} in ${e.daysLeft} day${e.daysLeft===1?'':'s'}`);
+
+  const tbaLine = unverifiedCount
+    ? `<br>DATE TBA: ${unverifiedCount} exam${unverifiedCount===1?'':'s'} awaiting official verification`
+    : '';
+
+  document.getElementById('dailyBrief').innerHTML =
+    `${todayStr}<br>CRITICAL: ${critical} &nbsp; URGENT: ${urgent} &nbsp; UPCOMING: ${upcoming}${tbaLine}<br><br>${lines.length ? lines.join('<br>') : 'No officially verified events.'}`;
 }
 
 /* ---------- Calendar ---------- */
@@ -559,7 +605,9 @@ function renderCalendar(){
   const daysInMonth = new Date(y, m+1, 0).getDate();
   const todayStr = new Date().toISOString().slice(0,10);
   const eventsByDate = {};
-  state.exams.forEach(e => { (eventsByDate[e.event_date] ||= []).push(e); });
+  state.exams
+    .filter(e => e.date_status !== 'unverified')
+    .forEach(e => { (eventsByDate[e.event_date] ||= []).push(e); });
   for (let i=0; i<firstDay; i++) html += `<div class="cal-day" style="border:none;"></div>`;
   for (let d=1; d<=daysInMonth; d++){
     const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
