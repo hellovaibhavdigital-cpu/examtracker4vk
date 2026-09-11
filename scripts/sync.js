@@ -43,13 +43,13 @@ function previewDiff(oldText, newText) {
   return changed.slice(0, 500) || 'Page content changed';
 }
 
-async function logSync(examId, message, status = 'info') {
+async function logSync(examId, message, level = 'info') {
   const { error } = await supabase
     .from('sync_log')
     .insert({
       exam_id: examId || null,
       message,
-      status
+      level
     });
 
   if (error) {
