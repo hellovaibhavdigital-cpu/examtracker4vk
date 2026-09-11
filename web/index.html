@@ -571,20 +571,41 @@ function renderLog(){
 
 /* ---------- Daily brief ---------- */
 function renderDailyBrief(){
-  const verified = state.exams
-    .filter(e => e.date_status !== 'unverified')
-    .map(e => ({...e, daysLeft: Math.max(0, Math.ceil(daysBetween(e.event_date)))}));
-
+  const verified = state.exams.filter(e => e.date_status !== 'unverified');
   const unverifiedCount = state.exams.filter(e => e.date_status === 'unverified').length;
-  const critical = verified.filter(e => e.daysLeft <= 3).length;
-  const urgent = verified.filter(e => e.daysLeft > 3 && e.daysLeft <= 7).length;
-  const upcoming = verified.filter(e => e.daysLeft > 7).length;
+
+  const critical = verified.filter(e => Math.max(0, Math.ceil(daysBetween(e.event_date))) <= 3).length;
+  const urgent = verified.filter(e => {
+    const d = Math.max(0, Math.ceil(daysBetween(e.event_date)));
+    return d > 3 && d <= 7;
+  }).length;
+  const upcoming = verified.filter(e => Math.max(0, Math.ceil(daysBetween(e.event_date))) > 7).length;
   const todayStr = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}).toUpperCase();
 
-  const lines = verified
-    .sort((a,b)=>a.daysLeft-b.daysLeft)
-    .slice(0,3)
-    .map(e => `${e.name} — ${e.event} in ${e.daysLeft} day${e.daysLeft===1?'':'s'}`);
+  // Group events by exam name so the bottom panel can show both the exam
+  // countdown and the form/application deadline together when both exist.
+  const groups = {};
+  verified.forEach(e => {
+    (groups[e.name] ||= []).push(e);
+  });
+
+  const lines = Object.values(groups)
+    .map(events => {
+      const exam = events.find(e => /exam/i.test(e.event || '') || /prelim|mains|tier/i.test(e.event || ''));
+      const form = events.find(e => /application|form|deadline/i.test(e.event || ''));
+      const fallback = events[0];
+
+      const examText = exam
+        ? `EXAM <strong>${Math.max(0, Math.ceil(daysBetween(exam.event_date)))}</strong> day${Math.ceil(Math.max(0, daysBetween(exam.event_date)))===1?'':'s'}`
+        : 'EXAM DATE TBA';
+
+      const formText = form
+        ? `FORM <strong>${Math.max(0, Math.ceil(daysBetween(form.event_date)))}</strong> day${Math.ceil(Math.max(0, daysBetween(form.event_date)))===1?'':'s'}`
+        : '';
+
+      return `${fallback.name} — ${examText}${formText ? ` &nbsp; · &nbsp; ${formText}` : ''}`;
+    })
+    .slice(0,4);
 
   const tbaLine = unverifiedCount
     ? `<br>DATE TBA: ${unverifiedCount} exam${unverifiedCount===1?'':'s'} awaiting official verification`
