@@ -390,25 +390,39 @@ function renderMainCountdown(){
     document.getElementById('mainExamEvent').textContent = 'Add an exam to begin';
     return;
   }
-  const withDays = state.exams.map(e => ({...e, daysLeft: daysBetween(e.event_date)}))
-    .filter(e => e.daysLeft >= 0).sort((a,b) => a.daysLeft - b.daysLeft);
-  const next = withDays[0] || {...state.exams[0], daysLeft: daysBetween(state.exams[0].event_date)};
+
+  const withDays = state.exams
+    .filter(e => e.date_status !== 'unverified')
+    .map(e => ({...e, daysLeft: daysBetween(e.event_date)}))
+    .filter(e => e.daysLeft >= 0)
+    .sort((a,b) => a.daysLeft - b.daysLeft);
+
+  if (!withDays.length){
+    document.getElementById('mainDays').textContent = '--';
+    document.getElementById('mainExamName').textContent = 'DATE VERIFICATION PENDING';
+    document.getElementById('mainExamEvent').textContent = 'No officially verified exam date';
+    return;
+  }
+
+  const next = withDays[0];
   const daysLeft = Math.max(0, Math.ceil(next.daysLeft));
   const st = statusFor(daysLeft);
+
   const el = document.getElementById('mainDays');
   el.textContent = String(daysLeft).padStart(2,'0');
   el.style.color = st.color;
+
   document.getElementById('mainExamName').textContent = next.name;
   document.getElementById('mainExamEvent').textContent = next.event;
 
   const ring = document.getElementById('ringProgress');
   const circumference = 2 * Math.PI * 45;
   const pct = Math.max(0, Math.min(1, daysLeft / 30));
+
   ring.style.stroke = st.color;
   ring.setAttribute('stroke-dasharray', circumference);
   ring.setAttribute('stroke-dashoffset', circumference * pct);
 }
-
 /* ---------- Exam list ---------- */
 function renderExamList(){
   const listEl = document.getElementById('examList');
