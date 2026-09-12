@@ -13,6 +13,14 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+// Unofficial fallback sources — used ONLY if the official source fails.
+// Aggregator pages, not government sites — dates from these must be
+// treated as unverified even after a "change detected" event.
+const FALLBACK_SOURCES = {
+  'IBPS RRB 2026': 'https://testbook.com/ibps-rrb',
+  'UPSC EPFO APFC 2026': 'https://testbook.com/upsc-epfo'
+};
+
 function hashText(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
@@ -56,7 +64,7 @@ async function logSync(examId, message, level = 'info') {
   }
 }
 
-async function fetchWithRetry(url) {
+async function fetchUrl(url) {
   const requestOptions = {
     timeout: 45000,
     headers: {
@@ -97,12 +105,57 @@ async function main() {
 
     console.log(`CHECKING: ${exam.name}`);
 
-    try {
-      const response = await fetchWithRetry(exam.source_url);
+    let response = null;
+    let usedFallback = false;
+    let officialError = null;
 
+    try {
+      response = await fetchUrl(exam.source_url);
+    } catch (err) {
+      officialError = err?.response?.status
+        ? `HTTP ${err.response.status}`
+        : (err?.message || 'Unknown error');
+
+      const fallbackUrl = FALLBACK_SOURCES[exam.name];
+
+      if (fallbackUrl) {
+        console.log(`OFFICIAL SOURCE FAILED for ${exam.name} (${officialError}) — trying fallback: ${fallbackUrl}`);
+        try {
+          response = await fetchUrl(fallbackUrl);
+          usedFallback = true;
+        } catch (fallbackErr) {
+          const fallbackMessage = fallbackErr?.response?.status
+            ? `HTTP ${fallbackErr.response.status}`
+            : (fallbackErr?.message || 'Unknown error');
+
+          errors++;
+          await logSync(
+            exam.id,
+            `${exam.name}: official source failed (${officialError}) AND fallback failed (${fallbackMessage})`,
+            'error'
+          );
+          console.error(`ERROR: ${exam.name}: both sources failed`);
+          continue;
+        }
+      } else {
+        errors++;
+        await logSync(
+          exam.id,
+          `${exam.name}: sync error — ${officialError}`,
+          'error'
+        );
+        console.error(`ERROR: ${exam.name}: ${officialError}`);
+        continue;
+      }
+    }
+
+    try {
       const visibleText = extractVisibleText(response.data);
       const newHash = hashText(visibleText);
       const now = new Date().toISOString();
+      const sourceLabel = usedFallback
+        ? ' [UNOFFICIAL FALLBACK SOURCE — verify manually]'
+        : '';
 
       // FIRST CHECK — create baseline
       if (!exam.content_hash) {
@@ -117,8 +170,8 @@ async function main() {
 
         await logSync(
           exam.id,
-          `${exam.name}: baseline created — source checked`,
-          'success'
+          `${exam.name}: baseline created — source checked${sourceLabel}`,
+          usedFallback ? 'warning' : 'success'
         );
 
         continue;
@@ -135,8 +188,8 @@ async function main() {
 
         await logSync(
           exam.id,
-          `${exam.name}: checked, no change`,
-          'success'
+          `${exam.name}: checked, no change${sourceLabel}`,
+          usedFallback ? 'warning' : 'success'
         );
 
         continue;
@@ -161,7 +214,7 @@ async function main() {
 
       await logSync(
         exam.id,
-        `${exam.name}: CHANGE DETECTED — ${diffPreview}`,
+        `${exam.name}: CHANGE DETECTED${sourceLabel} — ${diffPreview}`,
         'change'
       );
 
@@ -171,7 +224,7 @@ async function main() {
       if (dateTokens.length) {
         await logSync(
           exam.id,
-          `${exam.name}: possible date token(s) detected — ${dateTokens.join(', ')}; manual verification required`,
+          `${exam.name}: possible date token(s) detected${sourceLabel} — ${dateTokens.join(', ')}; manual verification required`,
           'warning'
         );
       }
@@ -179,13 +232,11 @@ async function main() {
     } catch (err) {
       errors++;
 
-      const message = err?.response?.status
-        ? `HTTP ${err.response.status}`
-        : (err?.message || 'Unknown error');
+      const message = err?.message || 'Unknown error';
 
       await logSync(
         exam.id,
-        `${exam.name}: sync error — ${message}`,
+        `${exam.name}: processing error — ${message}`,
         'error'
       );
 
