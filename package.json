@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Daily internet-verification sync job for EXAM//OS",
-  "scripts": {
-    "sync": "node scripts/sync.js"
+ "scripts": {
+    "sync": "node scripts/sync.js",
+    "discover": "node scripts/discover.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
