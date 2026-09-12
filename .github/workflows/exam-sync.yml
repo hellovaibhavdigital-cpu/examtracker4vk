@@ -20,10 +20,15 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
+           - name: Install dependencies
         run: npm install
 
-    
+      - name: Run exam sync
+        run: npm run sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
       - name: Run exam discovery
         run: npm run discover
         env:
