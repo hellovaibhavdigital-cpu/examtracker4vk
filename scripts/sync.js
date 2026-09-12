@@ -56,6 +56,26 @@ async function logSync(examId, message, level = 'info') {
   }
 }
 
+async function fetchWithRetry(url) {
+  const requestOptions = {
+    timeout: 45000,
+    headers: {
+      'User-Agent': 'EXAM//OS official-source monitor'
+    },
+    maxRedirects: 5
+  };
+
+  try {
+    return await axios.get(url, requestOptions);
+  } catch (err) {
+    if (err.code === 'ECONNABORTED') {
+      console.log(`RETRYING after timeout: ${url}`);
+      return await axios.get(url, requestOptions);
+    }
+    throw err;
+  }
+}
+
 async function main() {
   console.log(`SYNC RUN STARTED: ${new Date().toISOString()}`);
 
@@ -78,13 +98,7 @@ async function main() {
     console.log(`CHECKING: ${exam.name}`);
 
     try {
-      const response = await axios.get(exam.source_url, {
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'EXAM//OS official-source monitor'
-        },
-        maxRedirects: 5
-      });
+      const response = await fetchWithRetry(exam.source_url);
 
       const visibleText = extractVisibleText(response.data);
       const newHash = hashText(visibleText);
