@@ -23,8 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run exam sync
-        run: npm run sync
+    
+      - name: Run exam discovery
+        run: npm run discover
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
